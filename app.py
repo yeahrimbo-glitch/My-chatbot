@@ -39,7 +39,8 @@ default_settings = {
     "bot_name": "Phil Coulson",
     "bot_desc": "S.H.I.E.L.D. 요원. 침착하고 신뢰할 수 있는 성격.",
     "relationship": "요원과 보호 대상자 사이.",
-    "ng_rules": "현대 과학 기술 너무 잘 아는 척 금지."
+    "ng_rules": "현대 과학 기술 너무 잘 아는 척 금지.",
+    "messages": []  # 대화 내역 영구 저장용 저장소 추가
 }
 
 db_key = "guest"
@@ -73,7 +74,6 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**🤖 2. 챗봇 캐릭터 설정**")
     
-    # [짤림 방지] 안전하게 여러 줄로 나눈 파일 업로드 코드
     uploaded_file = st.file_uploader(
         "🤖 챗봇 프로필 사진 업로드", 
         type=["png", "jpg", "jpeg"]
@@ -111,19 +111,17 @@ with st.sidebar:
             "bot_name": bot_name,
             "bot_desc": bot_desc,
             "relationship": relationship,
-            "ng_rules": ng_rules
+            "ng_rules": ng_rules,
+            "messages": [
+                {
+                    "role": "model", 
+                    "content": f"준비됐네, {user_name}. 어떤 이야기를 시작해볼까?"
+                }
+            ]
         }
         save_to_persisted_db(db_key, new_data)
-        st.toast("⚙️ 설정이 안전하게 자동 저장되었습니다!")
-        
-        # [짤림 방지] 세로 정렬
-        st.session_state["messages"] = [
-            {
-                "role": "model", 
-                "content": f"준비됐네, {user_name}. 어떤 이야기를 시작해볼까?", 
-                "thought": "사용자의 설정을 확인하고 인사를 건넸다."
-            }
-        ]
+        st.session_state["messages"] = new_data["messages"]
+        st.toast("⚙️ 설정과 대화가 새로 초기화되었습니다!")
         st.rerun()
 
 # --- 상황극 프롬프트 조립 ---
@@ -139,16 +137,19 @@ system_prompt = f"""
 - {user_name}의 대사를 대신 지어내지 마세요.
 """
 
-# --- 대화 방 초기화 ---
+# --- 🔄 대화 자동 복원 기능 (새로고침/뒤로가기 방어) ---
 if "messages" not in st.session_state:
-    st.session_state["messages"] = [
-        {
-            "role": "model", 
-            "content": f"준비됐네, {user_name}. 어떤 이야기를 시작해볼까?", 
-            "thought": "사용자의 설정을 확인하고 인사를 건넸다."
-        }
-    ]
+    if "messages" in current_saved and current_saved["messages"]:
+        st.session_state["messages"] = current_saved["messages"]
+    else:
+        st.session_state["messages"] = [
+            {
+                "role": "model", 
+                "content": f"준비됐네, {user_name}. 어떤 이야기를 시작해볼까?"
+            }
+        ]
 
+# --- 대화 내용 출력 (속마음 제거 완료) ---
 for msg in st.session_state.messages:
     role_name = user_name if msg["role"] == "user" else bot_name
     avatar_to_use = None if msg["role"] == "user" else bot_avatar
@@ -158,9 +159,6 @@ for msg in st.session_state.messages:
         avatar=avatar_to_use
     ):
         st.write(f"**{role_name}**: {msg['content']}")
-        if msg["role"] == "model" and msg.get("thought"):
-            with st.expander("💭 속마음 들여다보기"):
-                st.info(msg["thought"])
 
 # --- 유저 입력 및 답변 처리 ---
 if prompt := st.chat_input():
@@ -174,9 +172,12 @@ if prompt := st.chat_input():
         system_instruction=system_prompt
     )
     
+    # 1. 유저 대사 추가 후 즉시 클라우드 파일에 저장
     st.session_state.messages.append(
         {"role": "user", "content": prompt}
     )
+    current_saved["messages"] = st.session_state.messages
+    save_to_persisted_db(db_key, current_saved)
     
     history = []
     for msg in st.session_state.messages[:-1]:
@@ -185,27 +186,14 @@ if prompt := st.chat_input():
     try:
         chat = model.start_chat(history=history)
         response = chat.send_message(prompt)
-        
         msg_text = response.text
-        ai_thought = ""
-        try:
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'thought') and part.thought:
-                    ai_thought = part.text
-                    break
-        except:
-            pass
-            
-        if not ai_thought:
-            ai_thought = "심도 있게 고심했습니다."
         
+        # 2. AI 대사 추가 후 즉시 클라우드 파일에 저장
         st.session_state.messages.append(
-            {
-                "role": "model", 
-                "content": msg_text, 
-                "thought": ai_thought
-            }
+            {"role": "model", "content": msg_text}
         )
+        current_saved["messages"] = st.session_state.messages
+        save_to_persisted_db(db_key, current_saved)
         st.rerun()
             
     except Exception as e:
