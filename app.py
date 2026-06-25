@@ -7,7 +7,7 @@ st.set_page_config(page_title="나만의 상황극 개인봇", page_icon="🎭",
 st.title("🎭 나만의 상황극 개인봇 (구글 로그인 및 무료 Gemini 버전)")
 st.caption("구글 로그인으로 나만의 설정을 안전하게 저장하고 복원할 수 있는 개인봇 사이트입니다.")
 
-# --- 📁 [NEW] 서버 영구 저장용 JSON 데이터베이스 기능 ---
+# --- 📁 서버 영구 저장용 JSON 데이터베이스 기능 ---
 DB_FILE = "user_settings_db.json"
 
 def load_persisted_db():
@@ -28,16 +28,16 @@ def save_to_persisted_db(email_key, data):
     except:
         pass
 
-# --- 🔒 [FIX] 구글 간편 로그인 에러 수정 ---
+# --- 🔒 [에러 완벽 수정] 구글 간편 로그인 관리 기능 ---
 def get_logged_in_user():
-    # AttributeError 해결: .get() 대신 정석적인 attribute(.email) 접근법 사용
+    # .get()을 사용하지 않고 안전하게 이메일 주소를 추출합니다.
     try:
-        if hasattr(st, "user") and st.user.email:
+        if hasattr(st, "user") and st.user.is_logged_in:
             return st.user.email
     except:
         pass
     try:
-        if hasattr(st, "experimental_user") and st.experimental_user.email:
+        if hasattr(st, "experimental_user") and st.experimental_user.is_logged_in:
             return st.experimental_user.email
     except:
         pass
@@ -47,11 +47,11 @@ user_email = get_logged_in_user()
 
 # 로그인 상태 안내 UI
 if not user_email:
-    st.warning("👋 현재 비로그인 상태입니다. 다른 기기에서도 설정을 복원하려면 구글 로그인을 해주세요!")
+    st.warning("👋 현재 비로그인 상태입니다. 설정 저장 및 다른 기기 복원을 원하시면 구글 로그인을 해주세요!")
     if st.button("🚀 구글 계정으로 로그인하기"):
         st.login()
 else:
-    st.success(f"🟢 {user_email} 계정으로 동기화됨 (설정이 클라우드 전용 파일에 영구 저장됩니다)")
+    st.success(f"🟢 {user_email} 계정으로 로그인되었습니다. (설정이 클라우드에 연동됩니다)")
 
 # --- 🔄 로그인 계정별 기존 설정 자동 복원 ---
 default_settings = {
@@ -63,7 +63,6 @@ default_settings = {
     "ng_rules": "현대 과학 기술을 너무 잘 아는 척 금지. 로봇 같은 말투 금지."
 }
 
-# 영구 저장된 파일 데이터베이스에서 내 이메일 설정 찾아오기
 db_key = user_email if user_email else "guest"
 persisted_db = load_persisted_db()
 
@@ -89,7 +88,6 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("⚙️ 상황극 세부 설정")
     
-    # 불러온 값으로 입력창 채우기
     user_name = st.text_input("👤 1-1. 내 캐릭터 이름", value=current_saved["user_name"])
     user_desc = st.text_area("👤 1-2. 내 캐릭터 설정/특징", value=current_saved["user_desc"])
     bot_name = st.text_input("🤖 2-1. 챗봇 캐릭터 이름", value=current_saved["bot_name"])
@@ -97,7 +95,6 @@ with st.sidebar:
     relationship = st.text_area("🔗 3. 둘의 관계성 / 상황", value=current_saved["relationship"])
     ng_rules = st.text_area("❌ 4. NG 사항 (금지 규칙)", value=current_saved["ng_rules"])
 
-    # 설정 저장 버튼 누를 때 파일(DB)에 영구 저장
     apply_settings = st.button("💾 설정 클라우드 저장 및 대화 초기화")
     
     if apply_settings:
@@ -111,6 +108,13 @@ with st.sidebar:
         }
         save_to_persisted_db(db_key, new_data)
         st.toast("⚙️ 설정이 안전하게 저장되었습니다!")
+        # 대화 기록 초기화 후 리런
+        st.session_state["messages"] = [{
+            "role": "model", 
+            "content": f"(당신을 바라보며 지긋이 고개를 끄덕인다) 준비됐네, {user_name}. 어떤 이야기를 시작해볼까?",
+            "thought": "사용자의 로그인 상태 및 설정을 확인하고 안정감 있는 요원의 톤으로 첫 인사를 건넸다."
+        }]
+        st.rerun()
 
     st.markdown("---")
     st.subheader("💾 설정 파일로 백업")
@@ -136,14 +140,12 @@ system_prompt = f"""
 """
 
 # --- 💬 대화 방 초기화 및 출력 ---
-if apply_settings or "messages" not in st.session_state:
+if "messages" not in st.session_state:
     st.session_state["messages"] = [{
         "role": "model", 
         "content": f"(당신을 바라보며 지긋이 고개를 끄덕인다) 준비됐네, {user_name}. 어떤 이야기를 시작해볼까?",
         "thought": "사용자의 로그인 상태 및 설정을 확인하고 안정감 있는 요원의 톤으로 첫 인사를 건넸다."
     }]
-    if apply_settings:
-        st.rerun()
 
 for msg in st.session_state.messages:
     role_name = user_name if msg["role"] == "user" else bot_name
@@ -163,15 +165,9 @@ if prompt := st.chat_input():
     model = genai.GenerativeModel(model_name="gemini-2.5-flash", system_instruction=system_prompt)
     
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.write(f"**{user_name}**: {prompt}")
-
-    history = []
-    for msg in st.session_state.messages[:-1]:
-        history.append({"role": msg["role"], "parts": [msg["content"]]})
     
     try:
-        chat = model.start_chat(history=history)
+        chat = model.start_chat(history=[])
         config = genai.types.GenerationConfig(thinking_config={"thinking_budget": 1024})
         response = chat.send_message(prompt, generation_config=config)
         
@@ -189,11 +185,7 @@ if prompt := st.chat_input():
             ai_thought = f"{bot_name}(이)가 설정을 기반으로 대사와 지문을 심도 있게 고심했습니다."
         
         st.session_state.messages.append({"role": "model", "content": msg_text, "thought": ai_thought})
-        
-        with st.chat_message("assistant"):
-            st.write(f"**{bot_name}**: {msg_text}")
-            with st.expander("💭 " + bot_name + "의 속마음 들여다보기"):
-                st.info(ai_thought)
+        st.rerun()
             
     except Exception as e:
         st.error(f"⚠️ 구글 AI 연결 오류가 발생했습니다. (오류 내용: {e})")
