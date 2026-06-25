@@ -3,13 +3,13 @@ from openai import OpenAI
 
 # 1. 페이지 설정
 st.set_page_config(page_title="나만의 상황극 개인봇", page_icon="🎭", layout="wide")
-st.title("🎭 나만의 상황극 개인봇")
+st.title("나만의 상황극 개인봇")
 st.caption("내가 정한 설정과 상황 속으로 들어가 AI와 대화해보세요.")
 
-# 2. 사이드바 설정 (API 키 및 기본 설정)
+# 2. 사이드바 설정 (API 키 및 캐릭터 설정)
 with st.sidebar:
     openai_api_key = st.text_input("OpenAI API Key", key="chatbot_api_key", type="password")
-    "[OpenAI API 키 발급받기](https://platform.openai.com/api-keys)"
+    st.markdown("[OpenAI API 키 발급받기](https://platform.openai.com/api-keys)")
     st.markdown("---")
     st.subheader("⚙️ 상황극 세부 설정")
     
@@ -31,7 +31,7 @@ with st.sidebar:
     st.markdown("### ❌ 4. NG 사항 (금지 규칙)")
     ng_rules = st.text_area("하지 말아야 할 행동/말", value="현대 과학 기술을 너무 잘 아는 척 금지. 로봇 같은 딱딱한 말투 금지.")
 
-    # 설정 적용 버튼
+    # 설정 변경 및 대화 초기화 버튼
     apply_settings = st.button("설정 저장 및 대화 초기화")
 
 # 3. 프롬프트(시스템 지시어) 조립하기
@@ -59,41 +59,49 @@ system_prompt = f"""
 - 첫 대사는 설정에 맞게 친근하고 자연스럽게 시작하세요.
 """
 
-# 4. 설정 변경 시 대화 리셋
+# 4. 설정 세션 초기화 로직 수정 (적용 안 되던 버그 해결)
 if apply_settings or "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": f"(눈을 반짝이며 당신을 바라본다) 안녕, {user_name}! 오늘 우리 뭐 하고 놀 거야?"}]
+    # 버튼을 누르면 화면을 강제 리프레시하여 새 설정이 바로 뜨도록 함
+    if apply_settings:
+        st.rerun()
 
 # 5. 기존 대화 출력
 for msg in st.session_state.messages:
-    # 화면에 표시되는 이름을 설정한 이름으로 변경
     role_name = user_name if msg["role"] == "user" else bot_name
     with st.chat_message(msg["role"]):
         st.write(f"**{role_name}**: {msg['content']}")
 
 # 6. 사용자 입력 및 AI 답변 처리
 if prompt := st.chat_input():
-    if not openai_api_key:
-        st.info("왼쪽 사이드바에 OpenAI API Key를 입력해주세요!")
+    # ★ API Key가 없을 때 에러창(AuthenticationError) 대신 안내 띄우기
+    if not openai_api_key or openai_api_key.strip() == "":
+        st.error("⚠️ 에러: 왼쪽 사이드바 메뉴( > 모양 버튼 )를 열어서 'OpenAI API Key'를 먼저 입력해 줘야 대화를 할 수 있어!")
         st.stop()
 
     client = OpenAI(api_key=openai_api_key)
     
-    # 사용자 메시지 추가
+    # 사용자 메시지 화면에 그리기 및 저장
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.write(f"**{user_name}**: {prompt}")
 
-    # 시스템 프롬프트와 대화 기록 합치기
+    # 시스템 프롬프트(설정값)와 대화 기록 합치기
     api_messages = [{"role": "system", "content": system_prompt}] + st.session_state.messages
 
-    # 답변 생성
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=api_messages
-    )
-    
-    # AI 답변 출력 및 저장
-    msg = response.choices[0].message.content
-    st.session_state.messages.append({"role": "assistant", "content": msg})
-    with st.chat_message("assistant"):
-        st.write(f"**{bot_name}**: {msg}")
+    try:
+        # OpenAI API 호출
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=api_messages
+        )
+        
+        # AI 답변 화면에 그리기 및 저장
+        msg = response.choices[0].message.content
+        st.session_state.messages.append({"role": "assistant", "content": msg})
+        with st.chat_message("assistant"):
+            st.write(f"**{bot_name}**: {msg}")
+            
+    except Exception as e:
+        # 혹시라도 키가 틀려서 또 에러가 날 경우 예쁘게 예외 처리
+        st.error(f"⚠️ OpenAI 인증에 실패했습니다. 사이드바에 입력한 API Key가 올바른지 확인해 주세요. (에러 내용: {e})")
