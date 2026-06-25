@@ -60,34 +60,5 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("**🤖 2. 챗봇 캐릭터 설정**")
     
-    # 📸 https://nuli.navercorp.com/community/article/1133151
-    uploaded_file = st.file_uploader("🤖 챗봇 프로필 사진 업로드 (휴대폰 갤러리에서 선택)", type=["png", "jpg", "jpeg"])
-    
-    # 사진을 올리면 사이드바에 미리 보여줍니다. 안 올리면 기본 로봇 아이콘이 적용됩니다.
-    bot_avatar = uploaded_file if uploaded_file else "🤖"
-    if uploaded_file:
-        st.image(uploaded_file, width=100, caption="업로드된 프로필 사진")
-        
-    bot_name = st.text_input("🤖 2-1. 챗봇 캐릭터 이름", value=current_saved["bot_name"])
-    bot_desc = st.text_area("🤖 2-2. 챗봇 캐릭터 설정/특징", value=current_saved["bot_desc"])
-    
-    relationship = st.text_area("🔗 3. 둘의 관계성 / 상황", value=current_saved["relationship"])
-    ng_rules = st.text_area("❌ 4. NG 사항 (금지 규칙)", value=current_saved["ng_rules"])
-
-    apply_settings = st.button("💾 설정 저장 및 대화 초기화")
-    st.caption("💡 입력창에 텍스트를 적으면 클라우드에 주기적으로 자동 저장됩니다.")
-    
-    if apply_settings:
-        new_data = {
-            "user_name": user_name,
-            "user_desc": user_desc,
-            "bot_name": bot_name,
-            "bot_desc": bot_desc,
-            "relationship": relationship,
-            "ng_rules": ng_rules
-        }
-        save_to_persisted_db(db_key, new_data)
-        st.toast("⚙️ 캐릭터 텍스트 설정이 안전하게 자동 저장되었습니다!")
-        
-        # 대화 초기화
-        st.session_state["messages"] =
+    # 📸 [사진 업로드 및 적용 안전 코드]
+    uploaded_file = st.file_uploader("🤖 챗봇 프로필 사진 업로드",
