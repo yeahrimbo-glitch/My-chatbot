@@ -184,13 +184,7 @@ if prompt := st.chat_input():
         
     try:
         chat = model.start_chat(history=history)
-        config = genai.types.GenerationConfig(
-            thinking_config={"thinking_budget": 1024}
-        )
-        response = chat.send_message(
-            prompt, 
-            generation_config=config
-        )
+        response = chat.send_message(prompt)
         
         msg_text = response.text
         ai_thought = ""
